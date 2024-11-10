@@ -131,12 +131,11 @@ class AssetLendingBase(ARC4Contract):
         else:
             op.err()
 
-        
     ##############################################
     # function: opt_out
     # purpose: opt out asset from the contract
     ##############################################
-    @arc4.abimethod(allow_actions=[OnCompleteAction.DeleteApplication])
+    @arc4.abimethod
     def opt_out(self) -> None:
         ###########################################
         assert self.lend_status <= UInt64(2), "not lended"
@@ -209,9 +208,7 @@ class NTAssetLending(AssetLendingBase):
         payment_amount = require_payment(Txn.sender, UInt64(1))
         assert payment_amount == lend_amount, "payment amount accurate"
         assert payment_amount > UInt64(2000000), "payment amount accurate"
-        assert self.lend_payback > payment_amount + UInt64(
-            2000000
-        ), "lend_payback accurate"
+        assert lend_payback > payment_amount + UInt64(2000000), "lend_payback accurate"
         assert lend_time > UInt64(0), "lend_time accurate"
         ##########################################
         self.lender = lender
