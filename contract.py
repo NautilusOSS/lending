@@ -1,5 +1,5 @@
 from algopy import (
-    ARC4Contract, 
+    ARC4Contract,
     Account,
     Asset,
     Global,
@@ -10,11 +10,8 @@ from algopy import (
     itxn,
     op,
 )
-from utils import (
-    require_payment,
-    require_asset_transfer,
-    app_asset_opt_in
-)
+from utils import require_payment, require_asset_transfer, app_asset_opt_in
+
 
 class AssetLendingBase(ARC4Contract):
     ##############################################
@@ -25,17 +22,17 @@ class AssetLendingBase(ARC4Contract):
     # post-conditions: initial state set
     ##############################################
     def __init__(self) -> None:
-        self.lender = Account()                 # zero address
-        self.borrower = Account()               # zero address
-        self.lend_type = UInt64()               # 0
-        self.lend_payment_asset_id = UInt64()   # 0
-        self.lend_asset_id = UInt64()           # 0
-        self.lend_amount = UInt64()             # 0
-        self.lend_paid = UInt64()               # 0
-        self.lend_status = UInt64()             # ""
-        self.lend_payback = UInt64()            # 0
-        self.lend_date = UInt64()               # 0
-        self.lend_time = UInt64()               # 0
+        self.lender = Global.creator_address
+        self.borrower = Account()  # zero address
+        self.lend_type = UInt64()  # 0
+        self.lend_payment_asset_id = UInt64()  # 0
+        self.lend_asset_id = UInt64()  # 0
+        self.lend_amount = UInt64()  # 0
+        self.lend_paid = UInt64()  # 0
+        self.lend_status = UInt64()  # ""
+        self.lend_payback = UInt64()  # 0
+        self.lend_date = UInt64()  # 0
+        self.lend_time = UInt64()  # 0
 
     ##############################################
     # function: setup
@@ -48,7 +45,7 @@ class AssetLendingBase(ARC4Contract):
     ##############################################
     @arc4.abimethod
     def setup(
-        self, 
+        self,
         lend_type: UInt64,
         lend_payment_asset_id: UInt64,
         lend_asset_id: UInt64,
@@ -57,7 +54,7 @@ class AssetLendingBase(ARC4Contract):
 
     ##############################################
     # function: fund
-    # arguments: 
+    # arguments:
     # - lend_payback, the amount to pay back
     # - lend_time, the time to pay back
     # purpose: fund the contract
@@ -65,7 +62,7 @@ class AssetLendingBase(ARC4Contract):
     ##############################################
     @arc4.abimethod
     def fund(
-        self, 
+        self,
         lend_amount: arc4.UInt64,
         lend_payback: arc4.UInt64,
         lend_time: arc4.UInt64,
@@ -82,7 +79,7 @@ class AssetLendingBase(ARC4Contract):
     def lend_nft(
         self,
     ) -> None:
-        pass 
+        pass
 
     ##############################################
     # function: pay_debt
@@ -91,9 +88,7 @@ class AssetLendingBase(ARC4Contract):
     # post-conditions: lend_status paid
     ##############################################
     @arc4.abimethod
-    def pay_debt(
-        self
-    ) -> None:
+    def pay_debt(self) -> None:
         pass
 
     ##############################################
@@ -103,9 +98,7 @@ class AssetLendingBase(ARC4Contract):
     # post-conditions: lend_status claimed
     ##############################################
     @arc4.abimethod
-    def claim_nft(
-        self
-    ) -> None:
+    def claim_nft(self) -> None:
         pass
 
     ##############################################
@@ -115,9 +108,7 @@ class AssetLendingBase(ARC4Contract):
     # post-conditions: lend_status claimed
     ##############################################
     @arc4.abimethod
-    def claim_debt(
-        self
-    ) -> None:
+    def claim_debt(self) -> None:
         pass
 
     ##############################################
@@ -132,21 +123,36 @@ class AssetLendingBase(ARC4Contract):
     # - should be alled with onCompletion
     #   deleteApplication
     ##############################################
-    @arc4.abimethod(allow_actions=[
-        OnCompleteAction.DeleteApplication
-    ])
+    @arc4.abimethod(allow_actions=[OnCompleteAction.DeleteApplication])
     def close(self) -> None:
-        ###########################################
-        assert self.lend_status == UInt64(5), "lend_status not claimed"
-        ###########################################
         oca = Txn.on_completion
         if oca == OnCompleteAction.DeleteApplication:
-            itxn.Payment(
-                receiver=self.lender,
-                close_remainder_to=self.lender
-            ).submit()
+            itxn.Payment(receiver=self.lender, close_remainder_to=self.lender).submit()
         else:
-            op.err() 
+            op.err()
+
+        
+    ##############################################
+    # function: opt_out
+    # purpose: opt out asset from the contract
+    ##############################################
+    @arc4.abimethod(allow_actions=[OnCompleteAction.DeleteApplication])
+    def opt_out(self) -> None:
+        ###########################################
+        assert self.lend_status <= UInt64(2), "not lended"
+        ###########################################
+        lend_asset = Asset(self.lend_asset_id)
+        itxn.AssetTransfer(
+            asset_amount=UInt64(0),
+            asset_receiver=lend_asset.creator,
+            xfer_asset=lend_asset,
+            asset_close_to=lend_asset.creator,
+        ).submit()
+        ###########################################
+        self.lend_status = UInt64(5)
+        self.lend_asset_id = UInt64(0)
+        ###########################################
+
 
 class NTAssetLending(AssetLendingBase):
     ##############################################
@@ -165,7 +171,7 @@ class NTAssetLending(AssetLendingBase):
     ##############################################
     @arc4.abimethod
     def setup(
-        self, 
+        self,
         lend_type: UInt64,
         lend_payment_asset_id: UInt64,
         lend_asset_id: UInt64,
@@ -191,7 +197,7 @@ class NTAssetLending(AssetLendingBase):
     ##############################################
     @arc4.abimethod
     def fund(
-        self, 
+        self,
         lend_amount: arc4.UInt64,
         lend_payback: arc4.UInt64,
         lend_time: arc4.UInt64,
@@ -203,7 +209,9 @@ class NTAssetLending(AssetLendingBase):
         payment_amount = require_payment(Txn.sender, UInt64(1))
         assert payment_amount == lend_amount, "payment amount accurate"
         assert payment_amount > UInt64(2000000), "payment amount accurate"
-        assert self.lend_payback > payment_amount + UInt64(2000000), "lend_payback accurate"
+        assert self.lend_payback > payment_amount + UInt64(
+            2000000
+        ), "lend_payback accurate"
         assert lend_time > UInt64(0), "lend_time accurate"
         ##########################################
         self.lender = lender
@@ -231,10 +239,7 @@ class NTAssetLending(AssetLendingBase):
         ##########################################
         borrower = Txn.sender
         ##########################################
-        itxn.Payment(
-            amount=self.lend_amount,
-            receiver=borrower
-        ).submit()
+        itxn.Payment(amount=self.lend_amount, receiver=borrower).submit()
         ##########################################
         self.borrower = borrower
         self.lend_date = Global.latest_timestamp
@@ -247,9 +252,7 @@ class NTAssetLending(AssetLendingBase):
     # post-conditions: lend_status paid
     ##############################################
     @arc4.abimethod
-    def pay_debt(
-        self
-    ) -> None:
+    def pay_debt(self) -> None:
         ##########################################
         assert self.lend_status == UInt64(3), "lend_status not lent"
         ##########################################
@@ -262,7 +265,7 @@ class NTAssetLending(AssetLendingBase):
             asset_amount=UInt64(1),
             asset_receiver=self.borrower,
             xfer_asset=lend_asset,
-            asset_close_to=lend_asset.creator
+            asset_close_to=lend_asset.creator,
         ).submit()
         ##########################################
         self.lend_paid = payment_amount
@@ -275,20 +278,20 @@ class NTAssetLending(AssetLendingBase):
     # post-conditions: nft claimed
     ##############################################
     @arc4.abimethod
-    def claim_nft(
-        self
-    ) -> None:
+    def claim_nft(self) -> None:
         ##########################################
         assert self.lend_status == UInt64(3), "lend_status not lent"
         ##########################################
-        assert Global.latest_timestamp > self.lend_date + self.lend_time, "lend_time expired"
+        assert (
+            Global.latest_timestamp > self.lend_date + self.lend_time
+        ), "lend_time expired"
         ##########################################
         lend_asset = Asset(self.lend_asset_id)
         itxn.AssetTransfer(
             asset_amount=UInt64(1),
             asset_receiver=self.lender,
             xfer_asset=lend_asset,
-            asset_close_to=lend_asset.creator
+            asset_close_to=lend_asset.creator,
         ).submit()
         ##########################################
         self.lend_status = UInt64(5)
@@ -300,19 +303,15 @@ class NTAssetLending(AssetLendingBase):
     # post-conditions: lend_status claimed
     ##############################################
     @arc4.abimethod
-    def claim_debt(
-        self
-    ) -> None:
+    def claim_debt(self) -> None:
         ##########################################
         assert self.lend_status == UInt64(4), "lend_status not claimed"
         assert self.lend_paid > 0, "lend_paid accurate"
         ##########################################
-        itxn.Payment(
-            amount=self.lend_payback,
-            receiver=self.lender
-        ).submit()
+        itxn.Payment(amount=self.lend_payback, receiver=self.lender).submit()
         ##########################################
         self.lend_status = UInt64(5)
+
 
 class NNTAssetLending(AssetLendingBase):
     ##############################################
@@ -332,7 +331,7 @@ class NNTAssetLending(AssetLendingBase):
     ##############################################
     @arc4.abimethod
     def setup(
-        self, 
+        self,
         lend_type: UInt64,
         lend_payment_asset_id: UInt64,
         lend_asset_id: UInt64,
@@ -342,9 +341,15 @@ class NNTAssetLending(AssetLendingBase):
         ##########################################
         lend_payment_asset = Asset(lend_payment_asset_id)
         lend_asset = Asset(lend_asset_id)
-        assert lend_payment_asset_id != lend_asset_id, "lend_payment_asset_id not equal to lend_asset_id"
-        assert lend_payment_asset.clawback == Global.zero_address, "lend_payment_asset not clawback"
-        assert lend_payment_asset.freeze == Global.zero_address, "lend_payment_asset not freeze"
+        assert (
+            lend_payment_asset_id != lend_asset_id
+        ), "lend_payment_asset_id not equal to lend_asset_id"
+        assert (
+            lend_payment_asset.clawback == Global.zero_address
+        ), "lend_payment_asset not clawback"
+        assert (
+            lend_payment_asset.freeze == Global.zero_address
+        ), "lend_payment_asset not freeze"
         assert lend_asset.clawback == Global.zero_address, "lend_asset not clawback"
         assert lend_asset.freeze == Global.zero_address, "lend_asset not freeze"
         ##########################################
@@ -358,7 +363,7 @@ class NNTAssetLending(AssetLendingBase):
 
     ##############################################
     # function: fund
-    # arguments: 
+    # arguments:
     # - lend_payback, the amount to pay back
     # - lend_time, the time to pay back
     # purpose: fund the contract
@@ -366,7 +371,7 @@ class NNTAssetLending(AssetLendingBase):
     ##############################################
     @arc4.abimethod
     def fund(
-        self, 
+        self,
         lend_amount: arc4.UInt64,
         lend_payback: arc4.UInt64,
         lend_time: arc4.UInt64,
@@ -376,7 +381,9 @@ class NNTAssetLending(AssetLendingBase):
         ##########################################
         lender = Txn.sender
         lend_payment_asset = Asset(self.lend_payment_asset_id)
-        payment_amount = require_asset_transfer(Txn.sender, UInt64(1), lend_payment_asset)
+        payment_amount = require_asset_transfer(
+            Txn.sender, UInt64(1), lend_payment_asset
+        )
         assert payment_amount == lend_amount, "payment amount accurate"
         assert payment_amount > UInt64(2000000), "payment amount accurate"
         assert lend_payback > payment_amount + UInt64(2000000), "lend_payback accurate"
@@ -395,15 +402,15 @@ class NNTAssetLending(AssetLendingBase):
     # post-conditions: lend_status paid
     ##############################################
     @arc4.abimethod
-    def pay_debt(
-        self
-    ) -> None:
+    def pay_debt(self) -> None:
         ##########################################
         assert self.lend_status == UInt64(3), "lend_status not lent"
         ##########################################
         assert Txn.sender == self.borrower, "sender accurate"
         lend_payment_asset = Asset(self.lend_payment_asset_id)
-        payment_amount = require_asset_transfer(Txn.sender, UInt64(1), lend_payment_asset)
+        payment_amount = require_asset_transfer(
+            Txn.sender, UInt64(1), lend_payment_asset
+        )
         assert payment_amount == self.lend_payback, "payment amount accurate"
         ##########################################
         lend_asset = Asset(self.lend_asset_id)
@@ -411,7 +418,7 @@ class NNTAssetLending(AssetLendingBase):
             asset_amount=UInt64(1),
             asset_receiver=self.borrower,
             xfer_asset=lend_asset,
-            asset_close_to=lend_asset.creator
+            asset_close_to=lend_asset.creator,
         ).submit()
         ##########################################
         self.lend_paid = payment_amount
@@ -424,14 +431,14 @@ class NNTAssetLending(AssetLendingBase):
     # post-conditions: nft claimed
     ##############################################
     @arc4.abimethod
-    def claim_nft(
-        self
-    ) -> None:
+    def claim_nft(self) -> None:
         ##########################################
         assert self.lend_status == UInt64(3), "lend_status not lent"
         ##########################################
         assert Txn.sender == self.lender, "sender accurate"
-        assert Global.latest_timestamp > self.lend_date + self.lend_time, "lend_time expired"
+        assert (
+            Global.latest_timestamp > self.lend_date + self.lend_time
+        ), "lend_time expired"
         ##########################################
         lend_payment_asset = Asset(self.lend_payment_asset_id)
         lend_asset = Asset(self.lend_asset_id)
@@ -439,13 +446,13 @@ class NNTAssetLending(AssetLendingBase):
             asset_amount=UInt64(1),
             asset_receiver=self.lender,
             xfer_asset=lend_asset,
-            asset_close_to=lend_asset.creator
+            asset_close_to=lend_asset.creator,
         ).submit()
         itxn.AssetTransfer(
             asset_amount=UInt64(0),
             asset_receiver=self.lender,
             xfer_asset=lend_payment_asset,
-            asset_close_to=lend_payment_asset.creator
+            asset_close_to=lend_payment_asset.creator,
         ).submit()
         ##########################################
         self.lend_status = UInt64(5)
@@ -457,23 +464,22 @@ class NNTAssetLending(AssetLendingBase):
     # post-conditions: lend_status claimed
     ##############################################
     @arc4.abimethod
-    def claim_debt(
-        self
-    ) -> None:
+    def claim_debt(self) -> None:
         ##########################################
         assert self.lend_status == UInt64(4), "lend_status not claimed"
         assert self.lend_paid > 0, "lend_paid accurate"
         ##########################################
         assert Txn.sender == self.lender, "sender accurate"
-        lend_payment_asset = Asset(self.lend_payment_asset_id)     
+        lend_payment_asset = Asset(self.lend_payment_asset_id)
         itxn.AssetTransfer(
             asset_amount=self.lend_payback,
             asset_receiver=self.lender,
             xfer_asset=lend_payment_asset,
-            asset_close_to=lend_payment_asset.creator
+            asset_close_to=lend_payment_asset.creator,
         ).submit()
         ##########################################
         self.lend_status = UInt64(5)
+
 
 class SmartAssetLending(AssetLendingBase):
     ##############################################
@@ -487,7 +493,7 @@ class SmartAssetLending(AssetLendingBase):
     ##############################################
     @arc4.abimethod
     def setup(
-        self, 
+        self,
         lend_type: UInt64,
         lend_payment_asset_id: UInt64,
         lend_asset_id: UInt64,
@@ -508,7 +514,7 @@ class SmartAssetLending(AssetLendingBase):
 
     ##############################################
     # function: fund
-    # arguments: 
+    # arguments:
     # - lend_payback, the amount to pay back
     # - lend_time, the time to pay back
     # purpose: fund the contract
@@ -516,7 +522,7 @@ class SmartAssetLending(AssetLendingBase):
     ##############################################
     @arc4.abimethod
     def fund(
-        self, 
+        self,
         lend_amount: arc4.UInt64,
         lend_payback: arc4.UInt64,
         lend_time: arc4.UInt64,
@@ -529,7 +535,7 @@ class SmartAssetLending(AssetLendingBase):
             app_id=self.lend_payment_asset_id,
             app_args=(
                 arc4.arc4_signature("arc200_balanceOf(address)uint256"),
-                Txn.sender
+                Txn.sender,
             ),
         ).submit()
         arc200_balanceOf = arc4.UInt256.from_log(arc200_balanceOf_call.last_log)
@@ -539,7 +545,7 @@ class SmartAssetLending(AssetLendingBase):
             app_args=(
                 arc4.arc4_signature("arc200_allowance(address,address)uint256"),
                 Txn.sender,
-                Global.current_application_address
+                Global.current_application_address,
             ),
         ).submit()
         arc200_allowance = arc4.UInt256.from_log(arc200_allowance_call.last_log)
@@ -591,9 +597,7 @@ class SmartAssetLending(AssetLendingBase):
     # post-conditions: lend_status paid
     ##############################################
     @arc4.abimethod
-    def pay_debt(
-        self
-    ) -> None:
+    def pay_debt(self) -> None:
         ##########################################
         assert self.lend_status == UInt64(3), "lend_status not lent"
         ##########################################
@@ -605,7 +609,7 @@ class SmartAssetLending(AssetLendingBase):
                 arc4.arc4_signature("arc200_transferFrom(address,address)bool"),
                 self.borrower,
                 self.lender,
-                self.lend_payback
+                self.lend_payback,
             ),
         ).submit()
         lend_asset = Asset(self.lend_asset_id)
@@ -613,7 +617,7 @@ class SmartAssetLending(AssetLendingBase):
             asset_amount=UInt64(1),
             asset_receiver=self.borrower,
             xfer_asset=lend_asset,
-            asset_close_to=lend_asset.creator
+            asset_close_to=lend_asset.creator,
         ).submit()
         ##########################################
         self.lend_paid = self.lend_payback
@@ -626,20 +630,20 @@ class SmartAssetLending(AssetLendingBase):
     # post-conditions: lend_status claimed
     ##############################################
     @arc4.abimethod
-    def claim_nft(
-        self
-    ) -> None:
+    def claim_nft(self) -> None:
         ##########################################
         assert self.lend_status == UInt64(3), "lend_status not lent"
         ##########################################
-        assert Global.latest_timestamp > self.lend_date + self.lend_time, "lend_time expired"
+        assert (
+            Global.latest_timestamp > self.lend_date + self.lend_time
+        ), "lend_time expired"
         ##########################################
         lend_asset = Asset(self.lend_asset_id)
         itxn.AssetTransfer(
             asset_amount=UInt64(1),
             asset_receiver=self.lender,
             xfer_asset=lend_asset,
-            asset_close_to=lend_asset.creator
+            asset_close_to=lend_asset.creator,
         ).submit()
         ##########################################
         self.lend_status = UInt64(5)
@@ -651,9 +655,5 @@ class SmartAssetLending(AssetLendingBase):
     # post-conditions: lend_status claimed
     ##############################################
     @arc4.abimethod
-    def claim_debt(
-        self
-    ) -> None:
+    def claim_debt(self) -> None:
         pass
-    
-
