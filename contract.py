@@ -333,6 +333,9 @@ class NNTAssetLending(AssetLendingBase):
         lend_payment_asset_id: UInt64,
         lend_asset_id: UInt64,
     ) -> None:
+        """
+        Lender sends payment asset to the contract
+        """
         ##########################################
         assert self.lend_status == UInt64(0), "lend_status not initialized"
         ##########################################
@@ -350,8 +353,8 @@ class NNTAssetLending(AssetLendingBase):
         assert lend_asset.clawback == Global.zero_address, "lend_asset not clawback"
         assert lend_asset.freeze == Global.zero_address, "lend_asset not freeze"
         ##########################################
-        app_asset_opt_in(lend_payment_asset)
-        app_asset_opt_in(lend_asset)
+        app_asset_opt_in(lend_payment_asset)  # payment asset
+        app_asset_opt_in(lend_asset)  # nft asset
         ##########################################
         self.lend_type = UInt64(2)
         self.lend_payment_asset_id = lend_payment_asset_id
@@ -373,6 +376,9 @@ class NNTAssetLending(AssetLendingBase):
         lend_payback: arc4.UInt64,
         lend_time: arc4.UInt64,
     ) -> None:
+        """
+        Lender sends payment asset to the contract
+        """
         ##########################################
         assert self.lend_status == UInt64(1), "lend_status not setup"
         ##########################################
@@ -382,8 +388,8 @@ class NNTAssetLending(AssetLendingBase):
             Txn.sender, UInt64(1), lend_payment_asset
         )
         assert payment_amount == lend_amount, "payment amount accurate"
-        assert payment_amount > UInt64(2000000), "payment amount accurate"
-        assert lend_payback > payment_amount + UInt64(2000000), "lend_payback accurate"
+        assert payment_amount > UInt64(100), "payment amount accurate"
+        assert lend_payback > payment_amount + UInt64(100), "lend_payback accurate"
         assert lend_time > UInt64(0), "lend_time accurate"
         ##########################################
         self.lender = lender
@@ -393,6 +399,38 @@ class NNTAssetLending(AssetLendingBase):
         self.lend_status = UInt64(2)
 
     ##############################################
+    # function: lend_nft
+    # arguments: None
+    # purpose: lend the nft
+    # post-conditions: lend_status lent
+    ##############################################
+    @arc4.abimethod
+    def lend_nft(
+        self,
+    ) -> None:
+        """
+        Borrower sends nft to the contract
+        """
+        ##########################################
+        assert self.lend_status == UInt64(2), "lend_status not funded"
+        ##########################################
+        lend_asset = Asset(self.lend_asset_id)
+        axfer_amount = require_asset_transfer(Txn.sender, UInt64(1), lend_asset)
+        assert axfer_amount == UInt64(1), "axfer amount accurate"
+        ##########################################
+        borrower = Txn.sender
+        lend_payment_asset = Asset(self.lend_payment_asset_id)
+        itxn.AssetTransfer(
+            asset_amount=self.lend_amount,
+            asset_receiver=borrower,
+            xfer_asset=lend_payment_asset,
+        ).submit()
+        ##########################################
+        self.borrower = borrower
+        self.lend_date = Global.latest_timestamp
+        self.lend_status = UInt64(3)
+
+    ##############################################
     # function: pay_debt
     # arguments: None
     # purpose: pay dept
@@ -400,6 +438,9 @@ class NNTAssetLending(AssetLendingBase):
     ##############################################
     @arc4.abimethod
     def pay_debt(self) -> None:
+        """
+        Borrower pays back the debt and receives the nft
+        """
         ##########################################
         assert self.lend_status == UInt64(3), "lend_status not lent"
         ##########################################
